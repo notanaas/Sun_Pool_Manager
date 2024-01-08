@@ -1,6 +1,6 @@
 #include <SoftwareSerial.h>
 
-SoftwareSerial EspSerial(18, 19); // RX, TX
+SoftwareSerial EspSerial(3, 3); // RX, TX
 
 // Sensor and relay pins
 const int waterLevelSensorPin = A0;  // Analog input pin for water level sensor
