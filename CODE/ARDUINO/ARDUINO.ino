@@ -1,17 +1,26 @@
 #include <SoftwareSerial.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
-SoftwareSerial EspSerial(3, 3); // RX, TX
+SoftwareSerial EspSerial(18, 19); // RX, TX
 
-// Sensor and relay pins
-const int waterLevelSensorPin = A0;  // Analog input pin for water level sensor
-const int pHsensorPin = A1;          // Analog input pin for pH sensor
-const int voltageSensorPin = A2;     // Analog input pin for voltage sensor
-const int currentSensorPin = A3;     // Analog input pin for current sensor
-const int motionSensorPin = 4;       // Digital pin connected to the motion sensor
-const int chlorinePumpPin = 22;      // Digital pin to control the chlorine pump relay
+// DS18B20 Sensor on pin 23
+const int oneWireBus = 23;        
+OneWire oneWire(oneWireBus);
+DallasTemperature sensors(&oneWire);
+
+// Other sensor pins
+const int waterLevelSensorPin = A0;
+const int pHsensorPin = A1;
+const int voltageSensorPin = A2;
+const int currentSensorPin = A3;
+const int motionSensorPin = 4;
+const int chlorinePumpPin = 22;
 
 void setup() {
-  EspSerial.begin(9600); // Start serial communication with ESP8266
+  EspSerial.begin(9600);
+  sensors.begin(); // Start the DS18B20 sensor
+
   pinMode(waterLevelSensorPin, INPUT);
   pinMode(pHsensorPin, INPUT);
   pinMode(voltageSensorPin, INPUT);
@@ -21,13 +30,15 @@ void setup() {
 }
 
 void loop() {
+  sensors.requestTemperatures(); 
+  float waterTemp = sensors.getTempCByIndex(0); // Read temperature
+
   int waterLevel = analogRead(waterLevelSensorPin);
   int pHValue = analogRead(pHsensorPin);
   int voltageValue = analogRead(voltageSensorPin);
   int currentValue = analogRead(currentSensorPin);
   int motionValue = digitalRead(motionSensorPin);
 
-  // Send data to ESP8266
   EspSerial.print(waterLevel);
   EspSerial.print(",");
   EspSerial.print(pHValue);
@@ -36,7 +47,9 @@ void loop() {
   EspSerial.print(",");
   EspSerial.print(currentValue);
   EspSerial.print(",");
-  EspSerial.println(motionValue);
+  EspSerial.print(motionValue);
+  EspSerial.print(",");
+  EspSerial.println(waterTemp);
 
-  delay(1000); // Delay in between reads for stability
+  delay(1000);
 }
