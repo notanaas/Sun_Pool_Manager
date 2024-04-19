@@ -1,47 +1,91 @@
-#define BLYNK_TEMPLATE_ID "TMPL6UO0OPJzF"
-#define BLYNK_TEMPLATE_NAME "Quickstart Template"
-
 #include <ESP8266WiFi.h>
-#include <BlynkSimpleEsp8266.h>
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>  // Include the ArduinoJson library for JSON handling
 
-char ssid[] = "M7md's room";
-char pass[] = "Musallam123";
-char auth[] = "Gwpxx9uoxznU8ruTyAu0Cml-eMG492JE";
+const char* ssid = "AnasAlsayed-2.4";
+const char* password = "1234567890";
+const char* serverUrl = "http://192.168.1.14:5000/sensor_data_post";
+const char* commandEndpoint = "http://192.168.1.14:5000/command";
 
-BlynkTimer timer;
-
-void sendSensorData() {
-  if (Serial.available()) {
-    String data = Serial.readStringUntil('\n');
-    int firstComma = data.indexOf(',');
-    int secondComma = data.indexOf(',', firstComma + 1);
-    int thirdComma = data.indexOf(',', secondComma + 1);
-    int fourthComma = data.indexOf(',', thirdComma + 1);
-    int fifthComma = data.indexOf(',', fourthComma + 1);
-
-    int waterLevel = data.substring(0, firstComma).toInt();
-    float pH = data.substring(firstComma + 1, secondComma).toFloat() / 1024.0 * 14.0;
-    float voltage = data.substring(secondComma + 1, thirdComma).toFloat() * (5.0 / 1023.0);
-    float current = data.substring(thirdComma + 1, fourthComma).toFloat() * (5.0 / 1023.0);
-    int motion = data.substring(fourthComma + 1, fifthComma).toInt();
-    float waterTemp = data.substring(fifthComma + 1).toFloat();
-
-    Blynk.virtualWrite(V1, waterLevel);
-    Blynk.virtualWrite(V2, pH);
-    Blynk.virtualWrite(V3, voltage);
-    Blynk.virtualWrite(V4, current);
-    Blynk.virtualWrite(V5, motion);
-    Blynk.virtualWrite(V6, waterTemp); // Send water temperature to virtual pin V6
-  }
-}
+WiFiClient wifiClient;
+HTTPClient http;
 
 void setup() {
-  Serial.begin(9600);
-  Blynk.begin(auth, ssid, pass);
-  timer.setInterval(1000L, sendSensorData);
+  Serial.begin(9600); // Start the serial communication for debugging
+  WiFi.begin(ssid, password); // Initiate WiFi connection with the provided SSID and password
+  
+  while (WiFi.status() != WL_CONNECTED) { // Wait until the connection is established
+    delay(500);
+    Serial.print("."); // Print dots on the Serial monitor to indicate waiting
+  }
+  Serial.println("WiFi connected"); // Print to Serial once connected
+  Serial.print("IP Address: "); 
+  Serial.println(WiFi.localIP()); // Print the local IP address assigned to the ESP
 }
 
 void loop() {
-  Blynk.run();
-  timer.run();
+  if (Serial.available()) { // Check if there is data sent from the Serial monitor
+    String sensorData = Serial.readStringUntil('\n'); // Read the sensor data until newline
+    postData(sensorData); // Post the data to the server
+  }
+  
+  // Check for command from server every 5 seconds
+  static unsigned long lastCheckMillis = millis();
+  if (millis() - lastCheckMillis > 5000) {
+    lastCheckMillis = millis();
+    checkForCommand();
+  }
+}
+
+void postData(String sensorData) {
+  http.begin(wifiClient, serverUrl); // Begin a HTTP client connection to the server URL
+  http.addHeader("Content-Type", "application/json"); // Set the content type of the request to JSON
+  String jsonPayload = createJsonFromSensors(sensorData); // Create JSON payload from sensor data
+  int httpResponseCode = http.POST(jsonPayload); // Send the data as a POST request
+  Serial.println("HTTP Response Code: " + String(httpResponseCode)); // Print the HTTP response code to Serial
+  http.end(); // End the HTTP client connection
+}
+
+void checkForCommand() {
+  http.begin(wifiClient, commandEndpoint); // Begin a HTTP client connection to the command URL
+  int httpResponseCode = http.GET(); // Send a GET request
+  
+  if (httpResponseCode == 200) {
+    String payload = http.getString(); // Get the response payload
+    Serial.println("Command received: " + payload); // Print the received command
+  } else {
+    Serial.println("Failed to receive command, HTTP code: " + String(httpResponseCode)); // Print error if not successful
+  }
+  http.end(); // End the HTTP client connection
+}
+
+String createJsonFromSensors(String sensorData) {
+  DynamicJsonDocument doc(1024);
+  int startIndex = 0, endIndex = 0;
+  String keys[] = {"water_level", "ph_value", "voltage", "current", "motion_detected", "water_temperature"};
+  float values[6];
+  int index = 0;
+  while (endIndex != -1 && index < 6) {
+    endIndex = sensorData.indexOf(',', startIndex);
+    String value = sensorData.substring(startIndex, endIndex == -1 ? sensorData.length() : endIndex);
+    values[index] = value.toFloat(); // Convert string to float and store temporarily
+    startIndex = endIndex + 1;
+    index++;
+  }
+
+  // Check for invalid temperature value
+  if (values[5] < 0) {  // Assuming index 5 is temperature
+    values[5] = 0; // Set a default or corrected value
+    Serial.println("Invalid temperature detected, setting to default 0");
+  }
+
+  // Assign values to JSON document
+  for (index = 0; index < 6; index++) {
+    doc[keys[index]] = values[index];
+  }
+  
+  String jsonString;
+  serializeJson(doc, jsonString);
+  Serial.println("Sending JSON: " + jsonString); // Print JSON to Serial for debugging
+  return jsonString;
 }

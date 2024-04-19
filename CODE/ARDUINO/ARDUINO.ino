@@ -2,10 +2,10 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-SoftwareSerial EspSerial(18, 19); // RX, TX
+SoftwareSerial EspSerial(19, 18); // RX, TX
 
 // DS18B20 Sensor on pin 23
-const int oneWireBus = 23;        
+const int oneWireBus = 5;        
 OneWire oneWire(oneWireBus);
 DallasTemperature sensors(&oneWire);
 
